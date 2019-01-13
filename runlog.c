@@ -52,6 +52,49 @@ int64_t rl_mem_peak(void)
 #endif
 }
 
+#ifndef _MSC_VER
+static void __cpuidex(int cpuid[4], int func_id, int subfunc_id)
+{
+#if defined(__x86_64__)
+	__asm__ volatile ("cpuid"
+			: "=a" (cpuid[0]), "=b" (cpuid[1]), "=c" (cpuid[2]), "=d" (cpuid[3])
+			: "0" (func_id), "2" (subfunc_id));
+#elif defined(__i386__) // on 32bit, ebx can NOT be used as PIC code
+	__asm__ volatile ("xchgl %%ebx, %1; cpuid; xchgl %%ebx, %1"
+			: "=a" (cpuid[0]), "=r" (cpuid[1]), "=c" (cpuid[2]), "=d" (cpuid[3])
+			: "0" (func_id), "2" (subfunc_id));
+#else
+	cpuid[0] = cpuid[1] = cpuid[2] = cpuid[3] = 0;
+#endif
+}
+#endif // ~ _MSC_VER
+
+int rl_simd(void)
+{
+#if defined(__x86_64__) || defined(__i386__)
+	int flag = 0, cpuid[4], max_id;
+	__cpuidex(cpuid, 0, 0);
+	max_id = cpuid[0];
+	if (max_id == 0) return 0;
+	__cpuidex(cpuid, 1, 0);
+	if (cpuid[3]>>25&1) flag |= RL_SIMD_SSE;
+	if (cpuid[3]>>26&1) flag |= RL_SIMD_SSE2;
+	if (cpuid[2]>>0 &1) flag |= RL_SIMD_SSE3;
+	if (cpuid[2]>>9 &1) flag |= RL_SIMD_SSSE3;
+	if (cpuid[2]>>19&1) flag |= RL_SIMD_SSE4_1;
+	if (cpuid[2]>>20&1) flag |= RL_SIMD_SSE4_2;
+	if (cpuid[2]>>28&1) flag |= RL_SIMD_AVX;
+	if (max_id >= 7) {
+		__cpuidex(cpuid, 7, 0);
+		if (cpuid[1]>>5 &1) flag |= RL_SIMD_AVX2;
+		if (cpuid[1]>>16&1) flag |= RL_SIMD_AVX512F;
+	}
+	return flag;
+#else
+	return -1;
+#endif
+}
+
 #if defined(__APPLE__)
 #include <mach/mach.h>
 

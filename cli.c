@@ -65,10 +65,19 @@ int launch_cmd(int argc, char *argv[], rl_res_t *res)
 	return 0;
 }
 
+static void write_simd_str(int flag, const char *str, int *is_first)
+{
+	if (flag) {
+		if (!*is_first) fputc(' ', stderr);
+		*is_first = 0;
+		fputs(str, stderr);
+	}
+}
+
 int main(int argc, char *argv[])
 {
 	ketopt_t o = KETOPT_INIT;
-	int i, c;
+	int i, c, simd_flags;
 	int64_t avail_mem_st;
 	char host_name[256];
 	rl_res_t res;
@@ -86,6 +95,23 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "runlog_hostname\t%s\n", host_name);
 	avail_mem_st = rl_mem_avail();
 	fprintf(stderr, "runlog_number_of_cpus\t%d\n", rl_ncpu());
+
+	simd_flags = rl_simd();
+	if (simd_flags >= 0) {
+		int is_first = 1;
+		fprintf(stderr, "runlog_simd\t");
+		write_simd_str(simd_flags & RL_SIMD_SSE,     "sse",     &is_first);
+		write_simd_str(simd_flags & RL_SIMD_SSE2,    "sse2",    &is_first);
+		write_simd_str(simd_flags & RL_SIMD_SSE3,    "sse3",    &is_first);
+		write_simd_str(simd_flags & RL_SIMD_SSSE3,   "ssse3",   &is_first);
+		write_simd_str(simd_flags & RL_SIMD_SSE4_1,  "sse4.1",  &is_first);
+		write_simd_str(simd_flags & RL_SIMD_SSE4_2,  "sse4.2",  &is_first);
+		write_simd_str(simd_flags & RL_SIMD_AVX,     "avx",     &is_first);
+		write_simd_str(simd_flags & RL_SIMD_AVX2,    "avx2",    &is_first);
+		write_simd_str(simd_flags & RL_SIMD_AVX512F, "avx512f", &is_first);
+		fputc('\n', stderr);
+	}
+
 	fprintf(stderr, "runlog_total_ram_in_gb\t%.6f\n", rl_mem_total() / RL_GB_IN_BYTE);
 	fprintf(stderr, "runlog_command_line\t");
 	for (i = o.ind; i < argc; ++i) {
