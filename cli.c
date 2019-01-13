@@ -5,6 +5,7 @@
 #include <sys/resource.h>
 #include <sys/wait.h>
 #include <signal.h>
+#include <time.h>
 #include "runlog.h"
 #include "ketopt.h"
 
@@ -12,6 +13,7 @@ typedef struct {
 	double rtime, utime, stime;
 	int64_t peak_mem;
 	int ret, sig;
+	long inblock, outblock, minflt, majflt;
 } rl_res_t;
 
 typedef void (*rl_sighandler_t)(int);
@@ -41,6 +43,10 @@ int launch_cmd(int argc, char *argv[], rl_res_t *res)
 		}
 		signal(SIGINT,  sigint_func);
 		signal(SIGQUIT, sigquit_func);
+		res->inblock  = r.ru_inblock;
+		res->outblock = r.ru_oublock;
+		res->minflt = r.ru_minflt;
+		res->majflt = r.ru_majflt;
 		res->rtime = rl_rtime() - res->rtime;
 		res->utime = r.ru_utime.tv_sec + 1e-6 * r.ru_utime.tv_usec;
 		res->stime = r.ru_stime.tv_sec + 1e-6 * r.ru_stime.tv_usec;
@@ -64,7 +70,9 @@ int main(int argc, char *argv[])
 	ketopt_t o = KETOPT_INIT;
 	int i, c;
 	int64_t avail_mem_st;
+	char host_name[256];
 	rl_res_t res;
+	time_t cur_time;
 
 	while ((c = ketopt(&o, argc, argv, 0, "", NULL)) >= 0) {
 	}
@@ -74,29 +82,42 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
+	if (gethostname(host_name, 255) == 0)
+		fprintf(stderr, "runlog_hostname\t%s\n", host_name);
 	avail_mem_st = rl_mem_avail();
 	fprintf(stderr, "runlog_number_of_cpus\t%d\n", rl_ncpu());
 	fprintf(stderr, "runlog_total_ram_in_gb\t%.6f\n", rl_mem_total() / RL_GB_IN_BYTE);
-	if (avail_mem_st >= 0) // if not, rl_mem_avail() is not implemented
-		fprintf(stderr, "runlog_available_ram_in_gb_start\t%.6f\n", avail_mem_st / RL_GB_IN_BYTE);
 	fprintf(stderr, "runlog_command_line\t");
 	for (i = o.ind; i < argc; ++i) {
 		if (i != o.ind) fputc(' ', stderr);
 		fprintf(stderr, "%s", argv[i]);
 	}
 	fputc('\n', stderr);
+	if (avail_mem_st >= 0) // if not, rl_mem_avail() is not implemented
+		fprintf(stderr, "runlog_available_ram_in_gb_start\t%.6f\n", avail_mem_st / RL_GB_IN_BYTE);
+	time(&cur_time);
+	fprintf(stderr, "runlog_time_start\t%s", ctime(&cur_time));
 	fprintf(stderr, "runlog_start =====>\n");
 
 	launch_cmd(argc - o.ind, argv + o.ind, &res);
 
 	fprintf(stderr, "runlog_end <=====\n");
+	time(&cur_time);
+	fprintf(stderr, "runlog_time_end\t%s", ctime(&cur_time));
 	if (avail_mem_st >= 0)
 		fprintf(stderr, "runlog_available_ram_in_gb_end\t%.6f\n", (long)rl_mem_avail() / RL_GB_IN_BYTE);
-	fprintf(stderr, "runlog_signal\t%d\n", res.sig);
+	fprintf(stderr, "runlog_term_signal\t%d\n", res.sig);
 	fprintf(stderr, "runlog_return_value\t%d\n", res.ret);
 	fprintf(stderr, "runlog_real_time_in_sec\t%.3f\n", res.rtime);
 	fprintf(stderr, "runlog_user_time_in_sec\t%.3f\n", res.utime);
 	fprintf(stderr, "runlog_sys_time_in_sec\t%.3f\n", res.stime);
+	fprintf(stderr, "runlog_percent_cpu\t%.2f\n", 100.0 * (res.utime+res.stime+1e-6) / (res.rtime+1e-6));
 	fprintf(stderr, "runlog_peak_rss_in_mb\t%.6f\n", res.peak_mem / 1024.0 / 1024.0);
+	fprintf(stderr, "runlog_major_page_faults\t%ld\n", res.majflt);
+	fprintf(stderr, "runlog_minor_page_faults\t%ld\n", res.minflt);
+#if !defined(__APPLE__) // not implemented on Mac
+	fprintf(stderr, "runlog_inputs\t%ld\n", res.inblock);
+	fprintf(stderr, "runlog_outputs\t%ld\n", res.outblock);
+#endif
 	return res.sig > 0? 2 : res.ret;
 }
