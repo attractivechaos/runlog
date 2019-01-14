@@ -23,6 +23,8 @@ int64_t rl_mem_total(void);
 int64_t rl_mem_avail(void);
 int32_t rl_ncpu(void);
 double rl_rtime(void);
+double rl_utime(void);
+double rl_stime(void);
 int rl_simd(void);
 
 #ifdef __cplusplus

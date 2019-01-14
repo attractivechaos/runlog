@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <sys/resource.h>
 #include <sys/wait.h>
+#include <sys/utsname.h>
 #include <signal.h>
 #include <time.h>
 #include "runlog.h"
@@ -80,6 +81,7 @@ int main(int argc, char *argv[])
 	int i, c, simd_flags;
 	int64_t avail_mem_st;
 	char host_name[256];
+	struct utsname un;
 	rl_res_t res;
 	time_t cur_time;
 
@@ -113,6 +115,10 @@ int main(int argc, char *argv[])
 	}
 
 	fprintf(stderr, "runlog_total_ram_in_gb\t%.6f\n", rl_mem_total() / RL_GB_IN_BYTE);
+	if (uname(&un) != -1) {
+		fprintf(stderr, "runlog_os\t%s %s\n", un.sysname, un.release);
+		fprintf(stderr, "runlog_cpu\t%s\n", un.machine);
+	} else perror(NULL);
 	fprintf(stderr, "runlog_command_line\t");
 	for (i = o.ind; i < argc; ++i) {
 		if (i != o.ind) fputc(' ', stderr);
