@@ -66,88 +66,104 @@ int launch_cmd(int argc, char *argv[], rl_res_t *res)
 	return 0;
 }
 
-static void write_simd_str(int flag, const char *str, int *is_first)
+static void write_simd_str(FILE *fp, int flag, const char *str, int *is_first)
 {
 	if (flag) {
-		if (!*is_first) fputc(' ', stderr);
+		if (!*is_first) fputc(' ', fp);
 		*is_first = 0;
-		fputs(str, stderr);
+		fputs(str, fp);
 	}
 }
 
 int main(int argc, char *argv[])
 {
 	ketopt_t o = KETOPT_INIT;
-	int i, c, simd_flags, has_uname;
+	int i, c, simd_flags, has_uname, print_sys = 0;
 	int64_t avail_mem_st;
-	char host_name[256];
+	char host_name[256], *fn_log = 0;
 	struct utsname un;
 	rl_res_t res;
 	time_t cur_time;
+	FILE *fp = stderr;
 
-	while ((c = ketopt(&o, argc, argv, 0, "", NULL)) >= 0) {
+	while ((c = ketopt(&o, argc, argv, 0, "so:", NULL)) >= 0) {
+		if (c == 's') print_sys = 1, fp = stdout;
+		else if (c == 'o') fn_log = o.arg;
 	}
 
-	if (argc == o.ind) {
-		fprintf(stderr, "Usage: runlog <prog> [arguments]\n");
+	if (argc == o.ind && !print_sys) {
+		fprintf(stderr, "Usage: runlog [options] <command> [arguments]\n");
+		fprintf(stderr, "Options:\n");
+		fprintf(stderr, "  -s         print system information to stdout\n");
+		fprintf(stderr, "  -o FILE    save logs to FILE [stderr]\n");
 		return 1;
+	}
+
+	if (fn_log) {
+		fp = fopen(fn_log, "w");
+		if (fp == 0) {
+			perror("Failed to write");
+			return 1;
+		}
 	}
 
 	if (uname(&un) == 0) has_uname = 1;
 	else has_uname = 0;
 
 	// CPU information
-	if (has_uname) fprintf(stderr, "runlog_cpu_type\t%s\n", un.machine);
-	fprintf(stderr, "runlog_n_cpus\t%d\n", rl_ncpu());
+	if (has_uname) fprintf(fp, "runlog_cpu_type\t%s\n", un.machine);
+	fprintf(fp, "runlog_n_cpus\t%d\n", rl_ncpu());
 	simd_flags = rl_simd();
 	if (simd_flags >= 0) {
 		int is_first = 1;
-		fprintf(stderr, "runlog_cpu_simd\t");
-		write_simd_str(simd_flags & RL_SIMD_SSE,     "sse",     &is_first);
-		write_simd_str(simd_flags & RL_SIMD_SSE2,    "sse2",    &is_first);
-		write_simd_str(simd_flags & RL_SIMD_SSE3,    "sse3",    &is_first);
-		write_simd_str(simd_flags & RL_SIMD_SSSE3,   "ssse3",   &is_first);
-		write_simd_str(simd_flags & RL_SIMD_SSE4_1,  "sse4.1",  &is_first);
-		write_simd_str(simd_flags & RL_SIMD_SSE4_2,  "sse4.2",  &is_first);
-		write_simd_str(simd_flags & RL_SIMD_AVX,     "avx",     &is_first);
-		write_simd_str(simd_flags & RL_SIMD_AVX2,    "avx2",    &is_first);
-		write_simd_str(simd_flags & RL_SIMD_AVX512F, "avx512f", &is_first);
-		fputc('\n', stderr);
+		fprintf(fp, "runlog_cpu_simd\t");
+		write_simd_str(fp, simd_flags & RL_SIMD_SSE,     "sse",     &is_first);
+		write_simd_str(fp, simd_flags & RL_SIMD_SSE2,    "sse2",    &is_first);
+		write_simd_str(fp, simd_flags & RL_SIMD_SSE3,    "sse3",    &is_first);
+		write_simd_str(fp, simd_flags & RL_SIMD_SSSE3,   "ssse3",   &is_first);
+		write_simd_str(fp, simd_flags & RL_SIMD_SSE4_1,  "sse4.1",  &is_first);
+		write_simd_str(fp, simd_flags & RL_SIMD_SSE4_2,  "sse4.2",  &is_first);
+		write_simd_str(fp, simd_flags & RL_SIMD_AVX,     "avx",     &is_first);
+		write_simd_str(fp, simd_flags & RL_SIMD_AVX2,    "avx2",    &is_first);
+		write_simd_str(fp, simd_flags & RL_SIMD_AVX512F, "avx512f", &is_first);
+		fputc('\n', fp);
 	}
-	fprintf(stderr, "runlog_total_ram_in_gb\t%.6f\n", rl_mem_total() / RL_GB_IN_BYTE);
+	fprintf(fp, "runlog_total_ram_in_gb\t%.6f\n", rl_mem_total() / RL_GB_IN_BYTE);
 
-	if (has_uname) fprintf(stderr, "runlog_os\t%s %s\n", un.sysname, un.release);
+	if (has_uname) fprintf(fp, "runlog_os\t%s %s\n", un.sysname, un.release);
 	if (gethostname(host_name, 255) == 0)
-		fprintf(stderr, "runlog_hostname\t%s\n", host_name);
+		fprintf(fp, "runlog_hostname\t%s\n", host_name);
 	avail_mem_st = rl_mem_avail();
 	if (avail_mem_st >= 0) // if not, rl_mem_avail() is not implemented
-		fprintf(stderr, "runlog_avail_ram_in_gb\t%.6f\n", avail_mem_st / RL_GB_IN_BYTE);
+		fprintf(fp, "runlog_avail_ram_in_gb\t%.6f\n", avail_mem_st / RL_GB_IN_BYTE);
 
-	fprintf(stderr, "runlog_command_line\t");
+	if (print_sys) return 0;
+
+	fprintf(fp, "runlog_command_line\t");
 	for (i = o.ind; i < argc; ++i) {
-		if (i != o.ind) fputc(' ', stderr);
-		fprintf(stderr, "%s", argv[i]);
+		if (i != o.ind) fputc(' ', fp);
+		fprintf(fp, "%s", argv[i]);
 	}
-	fputc('\n', stderr);
+	fputc('\n', fp);
 	time(&cur_time);
-	fprintf(stderr, "runlog_time_start ===>\t%s", ctime(&cur_time));
+	fprintf(fp, "runlog_time_start ===>\t%s", ctime(&cur_time));
 
 	launch_cmd(argc - o.ind, argv + o.ind, &res);
 
 	time(&cur_time);
-	fprintf(stderr, "runlog_time_end <===\t%s", ctime(&cur_time));
-	fprintf(stderr, "runlog_term_signal\t%d\n", res.sig);
-	fprintf(stderr, "runlog_return_value\t%d\n", res.ret);
-	fprintf(stderr, "runlog_real_time_in_sec\t%.3f\n", res.rtime);
-	fprintf(stderr, "runlog_user_time_in_sec\t%.3f\n", res.utime);
-	fprintf(stderr, "runlog_sys_time_in_sec\t%.3f\n", res.stime);
-	fprintf(stderr, "runlog_percent_cpu\t%.2f\n", 100.0 * (res.utime+res.stime+1e-6) / (res.rtime+1e-6));
-	fprintf(stderr, "runlog_peak_rss_in_mb\t%.6f\n", res.peak_mem / 1024.0 / 1024.0);
-	fprintf(stderr, "runlog_major_page_faults\t%ld\n", res.majflt);
-	fprintf(stderr, "runlog_minor_page_faults\t%ld\n", res.minflt);
-#if !defined(__APPLE__) // not implemented on Mac
-	fprintf(stderr, "runlog_inputs\t%ld\n", res.inblock);
-	fprintf(stderr, "runlog_outputs\t%ld\n", res.outblock);
-#endif
+	fprintf(fp, "runlog_time_end <===\t%s", ctime(&cur_time));
+	fprintf(fp, "runlog_term_signal\t%d\n", res.sig);
+	fprintf(fp, "runlog_return_value\t%d\n", res.ret);
+	fprintf(fp, "runlog_real_time_in_sec\t%.3f\n", res.rtime);
+	fprintf(fp, "runlog_user_time_in_sec\t%.3f\n", res.utime);
+	fprintf(fp, "runlog_sys_time_in_sec\t%.3f\n", res.stime);
+	fprintf(fp, "runlog_percent_cpu\t%.2f\n", 100.0 * (res.utime+res.stime+1e-6) / (res.rtime+1e-6));
+	fprintf(fp, "runlog_peak_rss_in_mb\t%.6f\n", res.peak_mem / 1024.0 / 1024.0);
+	fprintf(fp, "runlog_hard_page_faults\t%ld\n", res.majflt);
+	fprintf(fp, "runlog_soft_page_faults\t%ld\n", res.minflt);
+	fprintf(fp, "runlog_disk_inputs\t%ld\n", res.inblock);
+	fprintf(fp, "runlog_disk_outputs\t%ld\n", res.outblock);
+
+	if (fp != stdout || fp != stderr) fclose(fp);
 	return res.sig > 0? 2 : res.ret;
 }
