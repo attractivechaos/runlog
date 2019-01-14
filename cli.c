@@ -78,7 +78,7 @@ static void write_simd_str(int flag, const char *str, int *is_first)
 int main(int argc, char *argv[])
 {
 	ketopt_t o = KETOPT_INIT;
-	int i, c, simd_flags;
+	int i, c, simd_flags, has_uname;
 	int64_t avail_mem_st;
 	char host_name[256];
 	struct utsname un;
@@ -93,15 +93,16 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	if (gethostname(host_name, 255) == 0)
-		fprintf(stderr, "runlog_hostname\t%s\n", host_name);
-	avail_mem_st = rl_mem_avail();
-	fprintf(stderr, "runlog_number_of_cpus\t%d\n", rl_ncpu());
+	if (uname(&un) == 0) has_uname = 1;
+	else has_uname = 0;
 
+	// CPU information
+	if (has_uname) fprintf(stderr, "runlog_cpu_type\t%s\n", un.machine);
+	fprintf(stderr, "runlog_n_cpus\t%d\n", rl_ncpu());
 	simd_flags = rl_simd();
 	if (simd_flags >= 0) {
 		int is_first = 1;
-		fprintf(stderr, "runlog_simd\t");
+		fprintf(stderr, "runlog_cpu_simd\t");
 		write_simd_str(simd_flags & RL_SIMD_SSE,     "sse",     &is_first);
 		write_simd_str(simd_flags & RL_SIMD_SSE2,    "sse2",    &is_first);
 		write_simd_str(simd_flags & RL_SIMD_SSE3,    "sse3",    &is_first);
@@ -113,31 +114,28 @@ int main(int argc, char *argv[])
 		write_simd_str(simd_flags & RL_SIMD_AVX512F, "avx512f", &is_first);
 		fputc('\n', stderr);
 	}
-
 	fprintf(stderr, "runlog_total_ram_in_gb\t%.6f\n", rl_mem_total() / RL_GB_IN_BYTE);
-	if (uname(&un) != -1) {
-		fprintf(stderr, "runlog_os\t%s %s\n", un.sysname, un.release);
-		fprintf(stderr, "runlog_cpu\t%s\n", un.machine);
-	} else perror(NULL);
+
+	if (has_uname) fprintf(stderr, "runlog_os\t%s %s\n", un.sysname, un.release);
+	if (gethostname(host_name, 255) == 0)
+		fprintf(stderr, "runlog_hostname\t%s\n", host_name);
+	avail_mem_st = rl_mem_avail();
+	if (avail_mem_st >= 0) // if not, rl_mem_avail() is not implemented
+		fprintf(stderr, "runlog_avail_ram_in_gb\t%.6f\n", avail_mem_st / RL_GB_IN_BYTE);
+
 	fprintf(stderr, "runlog_command_line\t");
 	for (i = o.ind; i < argc; ++i) {
 		if (i != o.ind) fputc(' ', stderr);
 		fprintf(stderr, "%s", argv[i]);
 	}
 	fputc('\n', stderr);
-	if (avail_mem_st >= 0) // if not, rl_mem_avail() is not implemented
-		fprintf(stderr, "runlog_available_ram_in_gb_start\t%.6f\n", avail_mem_st / RL_GB_IN_BYTE);
 	time(&cur_time);
-	fprintf(stderr, "runlog_time_start\t%s", ctime(&cur_time));
-	fprintf(stderr, "runlog_start =====>\n");
+	fprintf(stderr, "runlog_time_start ===>\t%s", ctime(&cur_time));
 
 	launch_cmd(argc - o.ind, argv + o.ind, &res);
 
-	fprintf(stderr, "runlog_end <=====\n");
 	time(&cur_time);
-	fprintf(stderr, "runlog_time_end\t%s", ctime(&cur_time));
-	if (avail_mem_st >= 0)
-		fprintf(stderr, "runlog_available_ram_in_gb_end\t%.6f\n", (long)rl_mem_avail() / RL_GB_IN_BYTE);
+	fprintf(stderr, "runlog_time_end <===\t%s", ctime(&cur_time));
 	fprintf(stderr, "runlog_term_signal\t%d\n", res.sig);
 	fprintf(stderr, "runlog_return_value\t%d\n", res.ret);
 	fprintf(stderr, "runlog_real_time_in_sec\t%.3f\n", res.rtime);
