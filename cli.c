@@ -158,7 +158,7 @@ int main(int argc, char *argv[])
 	fprintf(fp, "runlog_user_time_in_sec\t%.3f\n", res.utime);
 	fprintf(fp, "runlog_sys_time_in_sec\t%.3f\n", res.stime);
 	fprintf(fp, "runlog_percent_cpu\t%.2f\n", 100.0 * (res.utime+res.stime+1e-6) / (res.rtime+1e-6));
-	fprintf(fp, "runlog_peak_rss_in_mb\t%.6f\n", res.peak_mem / 1024.0 / 1024.0);
+	fprintf(fp, "runlog_peak_rss_in_kb\t%.3f\n", res.peak_mem / 1024.0);
 	fprintf(fp, "runlog_hard_page_faults\t%ld\n", res.majflt);
 	fprintf(fp, "runlog_soft_page_faults\t%ld\n", res.minflt);
 	fprintf(fp, "runlog_disk_inputs\t%ld\n", res.inblock);
